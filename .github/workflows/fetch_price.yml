@@ -35,5 +35,8 @@ jobs:
             echo "No change"
           else
             git commit -m "snapshot: $(date -u '+%Y-%m-%d %H:%M UTC')"
-            git push || (git pull --rebase && git push)
+            for i in 1 2 3; do
+              git push && break
+              git pull --rebase
+            done
           fi
