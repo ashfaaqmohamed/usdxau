@@ -27,6 +27,11 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
           git add prices.csv
-          git diff --cached --quiet && echo "No change" || \
-            git commit -m "snapshot: $(date -u '+%Y-%m-%d %H:%M UTC')" && git push
+          if git diff --cached --quiet; then
+            echo "No change"
+          else
+            git commit -m "snapshot: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
