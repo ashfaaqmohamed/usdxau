@@ -1,61 +1,21 @@
-import asyncio
 import csv
 import json
 import os
-import re
+import urllib.request
 from datetime import datetime, timezone, timedelta
 
-from playwright.async_api import async_playwright
-
-SYMBOL_URL = "https://www.tradingview.com/symbols/XAUUSD/"
 CSV_FILE = "prices.csv"
+# Free public SwissQuote feed — no API key required
+SQ_URL = "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD"
 
 
-async def fetch_price() -> str | None:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1280, "height": 800},
-        )
-        page = await context.new_page()
-        try:
-            await page.goto(SYMBOL_URL, wait_until="domcontentloaded", timeout=60_000)
-            await page.wait_for_timeout(4_000)
-
-            html = await page.content()
-
-            # --- Strategy 1: JSON-LD structured data (most stable) ---
-            # TradingView embeds: {"@type":"Offer","price":"4322.71","priceCurrency":"USD"}
-            for script in re.findall(
-                r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
-                html,
-                re.S,
-            ):
-                try:
-                    data = json.loads(script)
-                    offers = data.get("offers", {})
-                    if isinstance(offers, list):
-                        offers = offers[0]
-                    price = offers.get("price")
-                    if price:
-                        return str(price)
-                except Exception:
-                    pass
-
-            # --- Strategy 2: regex fallback on raw HTML ---
-            m = re.search(r'"price"\s*:\s*"([\d.]+)"', html)
-            if m:
-                return m.group(1)
-
-        finally:
-            await browser.close()
-
-    return None
+def fetch_price() -> str | None:
+    req = urllib.request.Request(SQ_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read())
+    prices = data[0]["spreadProfilePrices"][0]
+    mid = (prices["bid"] + prices["ask"]) / 2
+    return str(round(mid, 3))
 
 
 def append_row(price: str | None) -> None:
@@ -65,11 +25,11 @@ def append_row(price: str | None) -> None:
     with open(CSV_FILE, "a", newline="") as f:
         writer = csv.writer(f)
         if needs_header:
-            writer.writerow(["timestamp_utc", "xauusd"])
+            writer.writerow(["timestamp_gmt2", "xauusd"])
         writer.writerow([now, price if price else "N/A"])
     print(f"{now}  XAUUSD = {price or 'N/A'}")
 
 
 if __name__ == "__main__":
-    price = asyncio.run(fetch_price())
+    price = fetch_price()
     append_row(price)

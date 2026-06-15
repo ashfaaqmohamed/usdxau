@@ -20,11 +20,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Playwright + Chromium
-        run: |
-          pip install playwright
-          playwright install chromium --with-deps
-
       - name: Fetch price snapshot
         run: python snapshot.py
 
