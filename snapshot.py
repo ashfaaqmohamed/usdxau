@@ -3,7 +3,7 @@ import csv
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from playwright.async_api import async_playwright
 
@@ -59,7 +59,8 @@ async def fetch_price() -> str | None:
 
 
 def append_row(price: str | None) -> None:
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    tz_gmt2 = timezone(timedelta(hours=2))
+    now = datetime.now(tz_gmt2).strftime("%Y-%m-%dT%H:%M:%S+02:00")
     needs_header = not os.path.exists(CSV_FILE)
     with open(CSV_FILE, "a", newline="") as f:
         writer = csv.writer(f)
