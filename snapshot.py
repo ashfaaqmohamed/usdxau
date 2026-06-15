@@ -1,12 +1,13 @@
 import asyncio
 import csv
+import json
 import os
 import re
 from datetime import datetime, timezone
 
 from playwright.async_api import async_playwright
 
-CHART_URL = "https://www.tradingview.com/chart/SGmz3Icc/"
+SYMBOL_URL = "https://www.tradingview.com/symbols/XAUUSD/"
 CSV_FILE = "prices.csv"
 
 
@@ -23,40 +24,33 @@ async def fetch_price() -> str | None:
         )
         page = await context.new_page()
         try:
-            await page.goto(CHART_URL, wait_until="domcontentloaded", timeout=60_000)
+            await page.goto(SYMBOL_URL, wait_until="domcontentloaded", timeout=60_000)
+            await page.wait_for_timeout(4_000)
 
-            # Dismiss cookie/consent banner if present
-            for label in ("Accept all", "Accept", "I agree"):
-                try:
-                    await page.get_by_role("button", name=label).click(timeout=2_000)
-                    break
-                except Exception:
-                    pass
+            html = await page.content()
 
-            # Give the chart JS time to render and update the <title>
-            await page.wait_for_timeout(6_000)
-
-            # --- Strategy 1: page <title> ---
-            # TradingView sets the title to e.g. "2387.50 ▲ XAUUSD — TradingView"
-            title = await page.title()
-            m = re.match(r"^([\d,]+\.?\d*)", title)
-            if m:
-                return m.group(1).replace(",", "")
-
-            # --- Strategy 2: DOM selectors (class names change with TV deploys) ---
-            for selector in (
-                '[class*="lastPrice"]',
-                '[class*="last-"]',
-                '[data-field="last_price"]',
-                '[class*="priceWrapper"] span',
+            # --- Strategy 1: JSON-LD structured data (most stable) ---
+            # TradingView embeds: {"@type":"Offer","price":"4322.71","priceCurrency":"USD"}
+            for script in re.findall(
+                r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
+                html,
+                re.S,
             ):
                 try:
-                    el = page.locator(selector).first
-                    text = await el.inner_text(timeout=3_000)
-                    if text and re.search(r"[\d.]+", text):
-                        return text.strip().replace(",", "")
+                    data = json.loads(script)
+                    offers = data.get("offers", {})
+                    if isinstance(offers, list):
+                        offers = offers[0]
+                    price = offers.get("price")
+                    if price:
+                        return str(price)
                 except Exception:
                     pass
+
+            # --- Strategy 2: regex fallback on raw HTML ---
+            m = re.search(r'"price"\s*:\s*"([\d.]+)"', html)
+            if m:
+                return m.group(1)
 
         finally:
             await browser.close()
