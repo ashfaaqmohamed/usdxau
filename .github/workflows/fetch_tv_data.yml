@@ -1,9 +1,9 @@
-name: Fetch XAUUSD Price
+name: Fetch TradingView Data
 
 on:
   schedule:
-    - cron: "0 * * * *"    # hourly fallback (cron-job.org triggers every 5 min)
-  workflow_dispatch:          # manual trigger from GitHub UI
+    - cron: "0 * * * *"   # every hour
+  workflow_dispatch:        # manual trigger from GitHub UI
 
 permissions:
   contents: write
@@ -12,7 +12,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  snapshot:
+  fetch:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,18 +23,21 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Fetch price snapshot
-        run: python snapshot.py
+      - name: Install dependencies
+        run: pip install --upgrade --no-cache-dir "git+https://github.com/rongardF/tvdatafeed.git"
 
-      - name: Commit updated prices.csv
+      - name: Fetch TradingView data
+        run: python fetch_tv_data.py
+
+      - name: Commit updated data
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add prices.csv
+          git add data/
           if git diff --cached --quiet; then
             echo "No change"
           else
-            git commit -m "snapshot: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git commit -m "data: $(date -u '+%Y-%m-%d %H:%M UTC')"
             for i in 1 2 3; do
               git push && break
               git pull --rebase
